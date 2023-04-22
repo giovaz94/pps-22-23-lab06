@@ -11,8 +11,10 @@ abstract class Parser[T]:
   def end: Boolean // is it ok to end here
   def parseAll(seq: Seq[T]): Boolean = (seq forall parse) & end // note &, not &&
 
-object Parsers:
-  val todo = ??? // put the extensions here..
+object Parsers :
+  extension (s: String)
+    def charParser(): Parser[Char] = new BasicParser(s.toSet)
+
 class BasicParser(chars: Set[Char]) extends Parser[Char]:
   override def parse(t: Char): Boolean = chars.contains(t)
   override def end: Boolean = true
@@ -27,10 +29,20 @@ trait NonEmpty[T] extends Parser[T]:
 class NonEmptyParser(chars: Set[Char]) extends BasicParser(chars) with NonEmpty[Char]
 
 trait NotTwoConsecutive[T] extends Parser[T]:
-  val todo = ???
-// ???
+  private[this] var prevSymb:Option[T] = None
+  abstract override def parse(t: T): Boolean =
+    prevSymb = if prevSymb.isEmpty then Some(t) else prevSymb.filter(v => v != t).map(_ => t)
+    prevSymb.isDefined
 
-class NotTwoConsecutiveParser(chars: Set[Char]) extends BasicParser(chars) // with ????
+trait ShortenThanN[T](private var n: Int) extends Parser[T]:
+  abstract override def parse(t: T): Boolean =
+    n = n - 1
+    n >= 0 && super.parse(t)
+
+
+class NotTwoConsecutiveParser(chars: Set[Char]) extends BasicParser(chars) with NotTwoConsecutive[Char]
+
+class ShortThanNParser(chars: Set[Char], n:Int) extends BasicParser(chars) with ShortenThanN[Char](n)
 
 @main def checkParsers(): Unit =
   def parser = new BasicParser(Set('a', 'b', 'c'))
@@ -51,12 +63,20 @@ class NotTwoConsecutiveParser(chars: Set[Char]) extends BasicParser(chars) // wi
   println(parserNTC.parseAll("".toList)) // true
 
   // note we do not need a class name here, we use the structural type
+  // Linearisation: BasicParser -> Parser -> NonEmpty -> NotTwoConsecutive
   def parserNTCNE = new BasicParser(Set('X', 'Y', 'Z')) with NotTwoConsecutive[Char] with NonEmpty[Char]
   println(parserNTCNE.parseAll("XYZ".toList)) // true
   println(parserNTCNE.parseAll("XYYZ".toList)) // false
   println(parserNTCNE.parseAll("".toList)) // false
 
-  def sparser: Parser[Char] = ??? // "abc".charParser()
+  def parserSTN = new ShortThanNParser(Set('X', 'Y', 'Z'), 3)
+  println(parserSTN.parseAll("XYVY".toList)) // false
+  println(parserSTN.parseAll("YYY".toList)) // true
+  println(parserSTN.parseAll("XCX".toList)) // false
+
+  import  Parsers.*
+
+  def sparser: Parser[Char] = "abc".charParser()
   println(sparser.parseAll("aabc".toList)) // true
   println(sparser.parseAll("aabcdc".toList)) // false
   println(sparser.parseAll("".toList)) // true
